@@ -1,5 +1,3 @@
-// main.go
-
 package main
 
 import (
@@ -7,27 +5,30 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"golang.org/x/time/rate"
 )
 
 func main() {
-	// Define routes to backend services
 	routes := map[string]string{
-		"/service1": "http://localhost:8001", // Example backend service 1
-		"/service2": "http://localhost:8002", // Example backend service 2
+		"/service1": "http://localhost:8001",
+		"/service2": "http://localhost:8002",
 	}
 
-	// Initialize a new HTTP multiplexer (router)
 	mux := http.NewServeMux()
 
-	// Add middleware for logging
-	mux.HandleFunc("/", loggingMiddleware)
-
-	// Add reverse proxy handler for each route
 	for path, target := range routes {
-		mux.Handle(path, newReverseProxy(target))
+		handler := newReverseProxy(target)
+		handler = loggingMiddleware(handler)
+		handler = authMiddleware(handler)
+		handler = rateLimitMiddleware(handler)
+		mux.Handle(path, handler)
 	}
 
-	// Start the API Gateway server
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Not Found", http.StatusNotFound)
+	}))
+
 	port := ":8080"
 	log.Printf("Starting API Gateway on port %s\n", port)
 	err := http.ListenAndServe(port, mux)
@@ -36,19 +37,44 @@ func main() {
 	}
 }
 
-// loggingMiddleware logs the incoming requests
-func loggingMiddleware(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Received request: %s %s", r.Method, r.URL.Path)
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Received request: %s %s", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
 }
 
-// newReverseProxy creates a new reverse proxy handler for the given target URL
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		expectedToken := "Bearer secret-token" // Replace with your actual expected token
+
+		if token != expectedToken {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	limiter := rate.NewLimiter(1, 5) // 1 request per second with burst of 5
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func newReverseProxy(target string) http.Handler {
 	url, _ := url.Parse(target)
 	proxy := httputil.NewSingleHostReverseProxy(url)
 
-	// Modify the response from the backend if needed
 	proxy.ModifyResponse = func(response *http.Response) error {
-		// Add custom logic here if required
 		return nil
 	}
 
