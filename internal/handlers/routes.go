@@ -75,13 +75,36 @@ func RegisterRoutes(srv *server.Server, cfg *config.Config) {
 	api := srv.Group("/api")
 	api.Use(middleware.JWTAuthMiddleware(cfg))
 
+	// Create separate GraphQL and WebSocket routes to avoid conflicts with wildcards
+
+	// GraphQL endpoints
+	graphql := api.Group("/graphql")
+	{
+		graphql.POST("/users", graphqlHandler.HandleRequest("users"))
+		graphql.POST("/payments", graphqlHandler.HandleRequest("payments"))
+		graphql.POST("/orders", graphqlHandler.HandleRequest("orders"))
+		// General purpose GraphQL endpoint for service aggregation
+		graphql.POST("", func(c *gin.Context) {
+			// Implementation would depend on your GraphQL schema aggregation strategy
+			c.JSON(501, gin.H{"error": "Not implemented"})
+		})
+	}
+
+	// WebSocket endpoints
+	ws := api.Group("/ws")
+	{
+		ws.GET("/users/*path", wsHandler.ProxyWebSocket("users"))
+		ws.GET("/payments/*path", wsHandler.ProxyWebSocket("payments"))
+		ws.GET("/notifications/*path", wsHandler.ProxyWebSocket("notifications"))
+	}
+
+	// Service routes for standard REST APIs
+
 	// Users service routes
 	users := api.Group("/users")
 	users.Use(middleware.AuthorizationMiddleware("users", cfg))
 	{
 		users.Any("/*path", proxyHandler.ProxyRequest("users"))
-		users.POST("/graphql", graphqlHandler.HandleRequest("users"))
-		users.GET("/ws/*path", wsHandler.ProxyWebSocket("users"))
 	}
 
 	// Payments service routes
@@ -89,8 +112,6 @@ func RegisterRoutes(srv *server.Server, cfg *config.Config) {
 	payments.Use(middleware.AuthorizationMiddleware("payments", cfg))
 	{
 		payments.Any("/*path", proxyHandler.ProxyRequest("payments"))
-		payments.POST("/graphql", graphqlHandler.HandleRequest("payments"))
-		payments.GET("/ws/*path", wsHandler.ProxyWebSocket("payments"))
 	}
 
 	// Notifications service routes
@@ -98,7 +119,6 @@ func RegisterRoutes(srv *server.Server, cfg *config.Config) {
 	notifications.Use(middleware.AuthorizationMiddleware("notifications", cfg))
 	{
 		notifications.Any("/*path", proxyHandler.ProxyRequest("notifications"))
-		notifications.GET("/ws/*path", wsHandler.ProxyWebSocket("notifications"))
 	}
 
 	// Orders service routes
@@ -106,14 +126,7 @@ func RegisterRoutes(srv *server.Server, cfg *config.Config) {
 	orders.Use(middleware.AuthorizationMiddleware("orders", cfg))
 	{
 		orders.Any("/*path", proxyHandler.ProxyRequest("orders"))
-		orders.POST("/graphql", graphqlHandler.HandleRequest("orders"))
 	}
-
-	// General purpose GraphQL endpoint for service aggregation
-	api.POST("/graphql", func(c *gin.Context) {
-		// Implementation would depend on your GraphQL schema aggregation strategy
-		c.JSON(501, gin.H{"error": "Not implemented"})
-	})
 
 	// You can add additional service routes here as needed
 }
