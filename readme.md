@@ -64,6 +64,7 @@ Edit the configuration file in `configs/config.yaml` to match your environment.
 ```bash
 go build -o api-gateway ./cmd/gateway
 ./api-gateway
+go run cmd/gateway/main.go
 ```
 
 ### Docker
