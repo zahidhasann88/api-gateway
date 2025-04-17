@@ -1,0 +1,57 @@
+# configs/config.yaml
+logLevel: info
+
+server:
+  address: :8080
+  timeout: 30
+
+cors:
+  allowedOrigins:
+    - "*"
+  allowedMethods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+    - OPTIONS
+  allowedHeaders:
+    - Authorization
+    - Content-Type
+
+proxy:
+  readTimeout: 5
+  writeTimeout: 10
+  idleTimeout: 120
+
+auth:
+  enabled: true
+  jwtSecret: "your-jwt-secret"
+  expiration: 24h
+  issuer: "api-gateway"
+
+services:
+  users:
+    url: http://users-service:8081
+    timeout: 5
+    retryCount: 3
+    rateLimit: 100
+    authentication: true
+    authorization:
+      roles:
+        - admin
+        - user
+  payments:
+    url: http://payments-service:8082
+    timeout: 10
+    retryCount: 2
+    rateLimit: 50
+    authentication: true
+    authorization:
+      roles:
+        - admin
+  public:
+    url: http://public-service:8083
+    timeout: 3
+    retryCount: 1
+    rateLimit: 200
+    authentication: false
